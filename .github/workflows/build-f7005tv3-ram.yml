@@ -1,0 +1,166 @@
+name: F7005TV3 RAM-only OpenWrt build
+
+on:
+  workflow_dispatch:
+    inputs:
+      clean_cache:
+        description: Ignore the package download cache
+        required: false
+        default: false
+        type: boolean
+  push:
+    branches:
+      - codex/f7005tv3-ram-initramfs
+    paths:
+      - .github/workflows/build-f7005tv3-ram.yml
+      - f7005tv3/**
+
+permissions:
+  contents: read
+
+env:
+  IW_URL: https://github.com/cnjn/ImmortalWrt
+  IW_BRANCH: sr1010-zx279133
+  KERNEL_URL: https://github.com/cnjn/linux-mainline-zte-zxslc-sr1010
+  KERNEL_BRANCH: build
+  KERNEL_SOURCE_DIR: linux-mainline-zte-zxslc-sr1010/linux-6.18.38
+  KVER: '6.18.60'
+
+jobs:
+  build-ram-only:
+    name: F7005TV3 initramfs
+    runs-on: ubuntu-22.04
+    timeout-minutes: 360
+    steps:
+      - name: Checkout F7005TV3 port
+        uses: actions/checkout@v4
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --force || true
+          sudo -E apt-get -qq autoremove --purge || true
+          sudo -E apt-get -qq clean || true
+          df -hT
+
+      - name: Install build dependencies
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          sudo -E apt-get -qq update
+          sudo -E apt-get -qq install --no-install-recommends ack asciidoc autoconf automake autopoint binutils bison \
+            build-essential bzip2 ccache clang cmake cpio curl device-tree-compiler ecj fastjar flex gawk gettext \
+            gcc-multilib g++-multilib git gnutls-dev gperf haveged help2man intltool lib32gcc-s1 libc6-dev-i386 \
+            libelf-dev libfdt-dev libglib2.0-dev libgmp-dev libltdl-dev libmpc-dev libmpfr-dev libncurses-dev \
+            libncursesw5-dev libpython3-dev libreadline-dev libssl-dev libtool libyaml-dev libz-dev lld llvm lrzsz \
+            mkisofs msmtp nano ninja-build p7zip p7zip-full patch pkgconf python3 python3-pip python3-ply \
+            python3-docutils python3-pyelftools bc dwarves qemu-utils qemu-user re2c rsync scons squashfs-tools \
+            subversion swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev zstd
+          sudo -E timedatectl set-timezone "Asia/Shanghai"
+
+      - name: Clone ImmortalWrt base
+        run: |
+          git clone --depth 1 -b "$IW_BRANCH" "$IW_URL" openwrt
+          cd openwrt && git log -1 --format='ImmortalWrt head: %h %s'
+
+      - name: Clone pinned ZX279133 kernel
+        run: |
+          git clone --branch "$KERNEL_BRANCH" --recurse-submodules --shallow-submodules "$KERNEL_URL" linux-mainline-zte-zxslc-sr1010
+          test -f "$KERNEL_SOURCE_DIR/Makefile"
+          make -C "$KERNEL_SOURCE_DIR" kernelversion
+
+      - name: Cache package downloads
+        if: github.event_name != 'workflow_dispatch' || inputs.clean_cache != true
+        uses: actions/cache@v4
+        with:
+          path: openwrt/dl
+          key: f7005tv3-dl-${{ hashFiles('configs/*.config') }}
+          restore-keys: f7005tv3-dl-
+
+      - name: Apply ZX279133 and F7005TV3 overlays
+        run: |
+          KT="$KERNEL_SOURCE_DIR"
+          cp -a kernel-overlays/. "$KT"/
+          cp f7005tv3/zx279133-f7005tv3.dts "$KT/arch/arm64/boot/dts/zte/"
+          grep -qxF 'dtb-y += zx279133-f7005tv3.dtb' "$KT/arch/arm64/boot/dts/zte/Makefile" || \
+            printf '%s\n' 'dtb-y += zx279133-f7005tv3.dtb' >> "$KT/arch/arm64/boot/dts/zte/Makefile"
+          cp -a overlays/. openwrt/
+          mkdir -p openwrt/files
+          cp -a f7005tv3/files/. openwrt/files/
+          test -f "$KT/arch/arm64/boot/dts/zte/zx279133-f7005tv3.dts"
+          grep -q 'dtb-y += zx279133-f7005tv3.dtb' "$KT/arch/arm64/boot/dts/zte/Makefile"
+          grep -q 'Device/skyworth_sk-d840n' openwrt/target/linux/zte/image/Makefile
+
+      - name: Update feeds
+        working-directory: openwrt
+        run: |
+          chmod +x "$GITHUB_WORKSPACE"/scripts/diy-*.sh
+          "$GITHUB_WORKSPACE/scripts/diy-part1.sh"
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+          "$GITHUB_WORKSPACE/scripts/diy-part2.sh"
+
+      - name: Configure the RAM-only F7005TV3 image
+        run: |
+          sh f7005tv3/configure-f7005tv3-ram.sh openwrt "$KERNEL_SOURCE_DIR"
+          grep -q 'DEVICE_DTS := zx279133-f7005tv3' openwrt/target/linux/zte/image/Makefile
+          grep -qx 'CONFIG_TARGET_ROOTFS_INITRAMFS=y' openwrt/.config
+          ! grep -qx 'CONFIG_PACKAGE_zrec=y' openwrt/.config
+
+      - name: Download package sources
+        working-directory: openwrt
+        run: |
+          make download -j8
+          find dl -size -1024c -exec ls -la {} \;
+          find dl -size -1024c -exec rm -f {} \;
+
+      - name: Compile OpenWrt initramfs
+        working-directory: openwrt
+        run: make -j"$(nproc)" || make -j1 V=s
+
+      - name: Package RAM trial kit
+        run: |
+          set -eu
+          mkdir -p out trial
+          IMAGE=$(find openwrt/bin/targets/zte/zx279133 -maxdepth 1 -name '*initramfs*.itb' | head -1)
+          test -n "$IMAGE" || { echo 'no FIT initramfs image was produced' >&2; exit 1; }
+          cp "$IMAGE" out/f7005tv3-initramfs.itb
+          KT=$(find openwrt/build_dir -type f -path '*/arch/arm64/boot/Image' | head -1 | sed 's#/arch/arm64/boot/Image##')
+          test -n "$KT" || { echo 'no built ARM64 Image was found' >&2; exit 1; }
+          test -f "$KT/arch/arm64/boot/dts/zte/zx279133-f7005tv3.dtb"
+          gzip -9nc "$KT/arch/arm64/boot/Image" > trial/trial-Image.gz
+          cp "$KT/arch/arm64/boot/dts/zte/zx279133-f7005tv3.dtb" trial/trial-dtb.bin
+          cp f7005tv3/trial-kexec.sh trial/
+          sh tools/getkexec.sh "$RUNNER_TEMP/f7005tv3-kexec"
+          cp "$RUNNER_TEMP/f7005tv3-kexec/trial-kx.tgz" trial/
+          (cd trial && sha256sum trial-Image.gz trial-dtb.bin trial-kexec.sh trial-kx.tgz > sha256sums-trial)
+          tar czf out/f7005tv3-ram-trial.tgz -C trial .
+          sha256sum out/* > out/sha256sums
+          ls -lh out
+          {
+            echo '## F7005TV3 RAM-only build'
+            echo 'No flash image or flash-writing script is included.'
+            echo 'Trial access address after boot: http://192.168.1.2/f7005tv3-ram-trial.txt'
+            echo 'Check the checksums in sha256sums before using the trial kit.'
+            echo '```'
+            ls -lh out
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload RAM-only artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: f7005tv3-ram-only-${{ github.run_number }}
+          path: out/*
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload build logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: f7005tv3-build-logs-${{ github.run_number }}
+          path: |
+            openwrt/logs
+            openwrt/.config
+          if-no-files-found: ignore

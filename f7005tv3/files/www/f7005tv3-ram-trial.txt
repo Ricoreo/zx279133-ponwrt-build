@@ -1,0 +1,4 @@
+ZTE F7005TV3 RAM trial booted.
+
+This image runs from RAM and contains no flash-writing workflow. Power-cycling
+the device returns it to the firmware stored in NAND.

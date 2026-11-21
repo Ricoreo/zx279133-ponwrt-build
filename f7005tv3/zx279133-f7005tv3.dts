@@ -1,0 +1,216 @@
+// SPDX-License-Identifier: GPL-2.0-only OR BSD-2-Clause
+// Experimental F7005TV3 RAM-only board tree. The ZX279133/512 MiB hardware
+// identity comes from the running device tree. Ethernet details are adapted
+// provisionally from another ZX279133 board and still require on-device proof.
+// No flash partitions or LED GPIO mappings are included.
+/dts-v1/;
+
+#include "zx279133.dtsi"
+
+/ {
+	model = "ZTE F7005TV3 (RAM trial)";
+	compatible = "zte,f7005tv3", "zte,zx279133";
+
+	aliases {
+		serial0 = &uart0;
+		watchdog0 = &watchdog0;
+		watchdog1 = &watchdog1;
+	};
+
+	chosen {
+		stdout-path = "serial0:115200n8";
+
+		bootargs = "console=ttyAMA0,115200n8 loglevel=8 panic=20";
+	};
+
+	memory@80000000 {
+		device_type = "memory";
+		reg = <0x0 0x80000000 0x0 0x20000000>;
+	};
+
+	reserved-memory {
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+
+		se_hash_reserved: buffer@9e100000 {
+			reg = <0x0 0x9e100000 0x0 0x1000000>;
+			no-map;
+		};
+
+		idm_reserved: buffer@9d700000 {
+			reg = <0x0 0x9d700000 0x0 0xa00000>;
+			no-map;
+		};
+
+		bmu_reserved: buffer@9c200000 {
+			reg = <0x0 0x9c200000 0x0 0x1500000>;
+			no-map;
+		};
+
+	};
+
+	thermal-zones {
+		soc-thermal {
+			thermal-sensors = <&pvt>;
+		};
+	};
+
+};
+
+&uart0 {
+	status = "okay";
+};
+
+&pvt {
+	status = "okay";
+};
+
+&usb3 {
+	status = "okay";
+};
+
+&pon_serdes {
+	status = "okay";
+};
+
+&uni_serdes {
+	status = "okay";
+};
+
+&nppt {
+
+	phy-mode = "sgmii";
+	phys = <&pon_serdes>, <&uni_serdes>;
+	phy-names = "serdes", "lan-serdes";
+
+	pcs-handle = <&xpcs1>;
+
+	zte,np-pool-base = <0xb0000000>;
+	zte,np-pool-size = <0x400000>;
+	memory-region = <&bmu_reserved>, <&se_hash_reserved>, <&idm_reserved>;
+	memory-region-names = "bmu", "se-hash", "idm";
+
+	local-mac-address = [02 00 00 00 00 01];
+	status = "okay";
+
+	zx279133,uni-phy-bus = <&mdio0>;
+
+	zx279133,outer-phy-bus = <&mdio1>;
+
+	fixed-link {
+		speed = <1000>;
+		full-duplex;
+	};
+
+	lan_cpu: ethernet-lan-cpu {
+		compatible = "zte,zx279133-lan-conduit";
+
+		local-mac-address = [02 00 00 00 00 02];
+	};
+
+	switch {
+		compatible = "zte,zx279133-switch";
+
+		ports {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			port@4 {
+				reg = <4>;
+				label = "lan0";
+				phy-mode = "internal";
+
+				fixed-link {
+					speed = <1000>;
+					full-duplex;
+				};
+			};
+
+			port@5 {
+				reg = <5>;
+				label = "lan2";
+				phy-mode = "internal";
+
+				fixed-link {
+					speed = <1000>;
+					full-duplex;
+				};
+			};
+
+			port@6 {
+				reg = <6>;
+				label = "lan3";
+				phy-mode = "internal";
+
+				fixed-link {
+					speed = <1000>;
+					full-duplex;
+				};
+			};
+
+			port@7 {
+				reg = <7>;
+				label = "lan4";
+				phy-mode = "internal";
+
+				fixed-link {
+					speed = <1000>;
+					full-duplex;
+				};
+			};
+
+			port@8 {
+				reg = <8>;
+				label = "lan1";
+
+				phy-mode = "2500base-x";
+
+				fixed-link {
+					speed = <2500>;
+					full-duplex;
+				};
+			};
+
+			port@9 {
+				reg = <9>;
+				ethernet = <&lan_cpu>;
+				phy-mode = "sgmii";
+
+				fixed-link {
+					speed = <1000>;
+					full-duplex;
+				};
+			};
+		};
+	};
+};
+
+&mdio0 {
+	status = "okay";
+};
+
+&mdio1 {
+	status = "okay";
+
+};
+
+&xpcs0 {
+	status = "okay";
+};
+
+&xpcs1 {
+	status = "okay";
+};
+
+&watchdog0 {
+	status = "okay";
+};
+
+&watchdog1 {
+	status = "okay";
+};
+
+&spifc {
+	status = "disabled";
+};
