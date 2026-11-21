@@ -102,6 +102,7 @@ jobs:
 
       - name: Configure the RAM-only F7005TV3 image
         run: |
+          sh scripts/prepare-sk-d840n-ui.sh "$GITHUB_WORKSPACE/openwrt"
           sh f7005tv3/configure-f7005tv3-ram.sh openwrt "$KERNEL_SOURCE_DIR"
           grep -q 'DEVICE_DTS := zx279133-f7005tv3' openwrt/target/linux/zte/image/Makefile
           grep -qx 'CONFIG_TARGET_ROOTFS_INITRAMFS=y' openwrt/.config
