@@ -55,7 +55,9 @@ done
 cd "$IW_DIR"
 sed -i '/^CONFIG_PACKAGE_zrec=y$/d; /^# CONFIG_PACKAGE_zrec is not set$/d' .config
 printf '# CONFIG_PACKAGE_zrec is not set\n' >> .config
-make defconfig
+# Do not run defconfig a second time here. The reference script has already resolved
+# all package selections; a second pass changes the selected board choice and drops
+# some packages from this downstream fork's image profile.
 
 grep -qx 'CONFIG_TARGET_ROOTFS_INITRAMFS=y' .config || {
 	echo 'RAM initramfs image was not selected' >&2; exit 1;
