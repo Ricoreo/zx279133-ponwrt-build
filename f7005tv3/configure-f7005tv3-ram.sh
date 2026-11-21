@@ -5,6 +5,10 @@ set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 IW_DIR=${1:?OpenWrt source directory required}
 KERNEL_TREE=${2:?external kernel source directory required}
+[ -d "$IW_DIR" ] || { echo "invalid OpenWrt tree: $IW_DIR" >&2; exit 1; }
+[ -d "$KERNEL_TREE" ] || { echo "invalid kernel tree: $KERNEL_TREE" >&2; exit 1; }
+IW_DIR=$(CDPATH= cd -- "$IW_DIR" && pwd)
+KERNEL_TREE=$(CDPATH= cd -- "$KERNEL_TREE" && pwd)
 DTS=zx279133-f7005tv3
 
 [ -f "$KERNEL_TREE/Makefile" ] || { echo "invalid kernel tree: $KERNEL_TREE" >&2; exit 1; }
