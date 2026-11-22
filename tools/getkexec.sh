@@ -23,12 +23,12 @@ set -eu
 
 VER=v3.22
 KEXEC_APK=kexec-tools-2.0.31-r0.apk
-ZLIB_APK=zlib-1.3.2-r1.apk
+ZLIB_APK=zlib-1.4-r0.apk
 XZ_APK=xz-libs-5.8.4-r0.apk
 # sha256 of what was fetched and tested on 2026-10-10
 SUMS='2c3fea334f6f6c60cc0874236289106118ceaeb38a0f615a346e6a13eace550f  kexec-tools-2.0.31-r0.apk
 8a64b55223f29e24f934ccbc8167d535b913bf923dab5e14de7946a7c36091a7  xz-libs-5.8.4-r0.apk
-2d274cb1b2a36d0e8347d802e6dea8648cab952ea5fae1989ab72e725842a2c3  zlib-1.3.2-r1.apk'
+279972bab4f817182d9617984880bc29471f1d3016f92265be10d71e6f95ca74  zlib-1.4-r0.apk'
 
 OUT=${1:-staging/trial}
 DL=https://dl-cdn.alpinelinux.org/alpine/$VER
@@ -59,11 +59,11 @@ mkdir -p x lib
 # libz.so.1 symlinks: git-bash cannot create symlinks on Windows by default, and
 # the soname files are named explicitly below anyway.
 tar xzf "$KEXEC_APK" -C x usr/sbin/kexec usr/sbin/vmcore-dmesg
-tar xzf "$ZLIB_APK" -C x usr/lib/libz.so.1.3.2
+tar xzf "$ZLIB_APK" -C x usr/lib/libz.so.1.4
 tar xzf "$XZ_APK" -C x usr/lib/liblzma.so.5.8.4
 
 cp x/usr/sbin/kexec kexec
-cp x/usr/lib/libz.so.1.3.2 lib/libz.so.1
+cp x/usr/lib/libz.so.1.4 lib/libz.so.1
 cp x/usr/lib/liblzma.so.5.8.4 lib/liblzma.so.5
 rm -rf x
 # Tarred from Windows the exec bit does not survive; trial-kexec.sh chmods it on
