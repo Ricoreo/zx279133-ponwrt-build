@@ -132,8 +132,9 @@ jobs:
           IMAGE=$(find openwrt/bin/targets/zte/zx279133 -maxdepth 1 -name '*initramfs*.itb' | head -1)
           test -n "$IMAGE" || { echo 'no FIT initramfs image was produced' >&2; exit 1; }
           cp "$IMAGE" out/f7005tv3-initramfs.itb
-          KT=$(find openwrt/build_dir -type f -path '*/arch/arm64/boot/Image' | head -1 | sed 's#/arch/arm64/boot/Image##')
-          test -n "$KT" || { echo 'no built ARM64 Image was found' >&2; exit 1; }
+          KT=$( { ls -d openwrt/build_dir/target-*/linux-zte_zx279133/linux-$KVER 2>/dev/null || true; } | head -1 )
+          test -n "$KT" || { echo "no build directory for linux-$KVER" >&2; exit 1; }
+          test -f "$KT/arch/arm64/boot/Image" || { echo 'no built ARM64 Image was found' >&2; exit 1; }
           test -f "$KT/arch/arm64/boot/dts/zte/zx279133-f7005tv3.dtb"
           gzip -9nc "$KT/arch/arm64/boot/Image" > trial/trial-Image.gz
           cp "$KT/arch/arm64/boot/dts/zte/zx279133-f7005tv3.dtb" trial/trial-dtb.bin
