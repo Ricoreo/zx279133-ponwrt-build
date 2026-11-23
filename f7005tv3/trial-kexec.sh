@@ -1,47 +1,44 @@
 #!/bin/sh
-# Load or execute the F7005TV3 OpenWrt initramfs through the running kernel.
-# This script never writes NAND. Run --load first; after it succeeds, run --exec.
 set -eu
-
-D=${D:-$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)}
-KX="$D/kexec"
+umask 077
+D=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+cd "$D"
 ACTION=${1:---load}
-MEMARGS="--mem-min=0x88000000 --mem-max=0x9b000000"
-CMDLINE=${CMDLINE:-'root=/dev/ram0 rw console=ttyAMA0,115200n8 loglevel=7 panic=20'}
-
-say() { echo "f7005tv3-ram: $*"; }
-die() { echo "f7005tv3-ram: $*" >&2; exit 1; }
-
-if [ ! -x "$KX" ] && [ -s "$D/trial-kx.tgz" ]; then
-	tar -xzf "$D/trial-kx.tgz" -C "$D" || die 'kexec support archive extraction failed'
-fi
-[ -x "$KX" ] || chmod +x "$KX" 2>/dev/null || :
-[ -x "$KX" ] || die "missing bundled kexec executable: $KX"
-[ -d "$D/lib" ] && export LD_LIBRARY_PATH="$D/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-
+STATE=/tmp/f7005tv3-kexec-state
+LOCK=$STATE.lock
+mkdir "$LOCK" || { echo 'Another trial operation is active'; exit 1; }
+trap 'rm -rf "$LOCK"' EXIT
+die() { echo "$*" >&2; exit 1; }
+command -v sha256sum >/dev/null || die 'sha256sum required'
+[ -s sha256sums-trial ] || die 'missing checksum manifest'
+expected='trial-Image.gz trial-dtb.bin trial-kexec.sh trial-kx.tgz stock-evidence.sh'
+if [ -e trial-initrd ]; then expected="$expected trial-initrd"; fi
+printf '%s\n' $expected | sort > "$LOCK/expected"
+awk 'NF != 2 || length($1) != 64 || $1 ~ /[^0-9a-f]/ {exit 1} {print $2}' sha256sums-trial > "$LOCK/names" || die 'invalid checksum manifest'
+sort "$LOCK/names" > "$LOCK/list"
+cmp "$LOCK/expected" "$LOCK/list" || die 'unexpected checksum entries'
+sha256sum -c sha256sums-trial || die 'trial checksum mismatch'
+tar xzf trial-kx.tgz -C "$LOCK"
+KX=$LOCK/kexec
+export LD_LIBRARY_PATH=$LOCK/lib
+boot=$(cat /proc/sys/kernel/random/boot_id)
+digest=$(sha256sum sha256sums-trial)
+loaded=/sys/kernel/kexec_loaded
 case "$ACTION" in
-	--load)
-		[ -s "$D/trial-Image.gz" ] || die 'missing trial-Image.gz'
-		[ -s "$D/trial-dtb.bin" ] || die 'missing trial-dtb.bin'
-		if [ -s "$D/sha256sums-trial" ] && command -v sha256sum >/dev/null 2>&1; then
-			(cd "$D" && sha256sum -c sha256sums-trial) || die 'trial file checksum failed'
-		fi
-		"$KX" --version >/dev/null 2>&1 || die 'bundled kexec cannot run on this firmware'
-		gzip -dc "$D/trial-Image.gz" > "$D/trial-Image" || die 'Image decompression failed'
-		say 'loading RAM image; no NAND partitions are included in its device tree'
-		"$KX" --load $MEMARGS "$D/trial-Image" --dtb="$D/trial-dtb.bin" \
-			--command-line="$CMDLINE" || die 'kexec --load failed; current system is still running'
-		say 'image loaded but not started. Check that the current web interface still responds.'
-		say 'If ready, run: sh trial-kexec.sh --exec'
-		;;
-	--exec)
-		say 'starting the loaded RAM image in 5 seconds. Power-cycling returns to NAND firmware.'
-		sleep 5
-		"$KX" --exec || die 'kexec --exec failed'
-		;;
-	--unload)
-		"$KX" --unload || die 'could not unload the pending kexec image'
-		say 'pending RAM image unloaded'
-		;;
-	*) die 'usage: sh trial-kexec.sh [--load|--exec|--unload]' ;;
+ --load)
+   rm -f "$STATE"
+   gzip -dc trial-Image.gz > "$LOCK/Image"
+   set --
+   if [ -f trial-initrd ]; then set -- "--initrd=$D/trial-initrd"; fi
+   "$KX" --load --mem-min=0x88000000 --mem-max=0x9b000000 "$LOCK/Image" --dtb="$D/trial-dtb.bin" "$@" --command-line='root=/dev/ram0 rw console=ttyAMA0,115200n8 loglevel=7 panic=20'
+   printf '%s\n' "$boot $digest" > "$LOCK/state"
+   mv "$LOCK/state" "$STATE"
+   ;;
+ --exec)
+   [ "$(cat "$STATE")" = "$boot $digest" ] || die 'load this kit first'
+   if [ -r "$loaded" ]; then [ "$(cat "$loaded")" = 1 ] || die 'no loaded kernel'; fi
+   "$KX" --exec
+   ;;
+ --unload) "$KX" --unload; rm -f "$STATE" ;;
+ *) die 'use --load, --exec or --unload' ;;
 esac

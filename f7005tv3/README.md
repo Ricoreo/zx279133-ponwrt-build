@@ -42,3 +42,7 @@ After boot, check `http://192.168.1.2/f7005tv3-ram-trial.txt` promptly. If the p
 - The F7005TV3 network path has not been confirmed against the reference board's mainline driver. Management access after kexec may fail; the RAM trial remains reversible by power-cycling.
 - The image is not tested on the physical F7005TV3 until the owner runs the trial.
 - The stock firmware's live device tree contains a vendor key in `/chosen`; it was intentionally excluded from this repository.
+
+## Collect stock-board evidence
+
+Run `sh stock-evidence.sh` on the original firmware. Record one snapshot per labelled jack with a single cable attached. Carrier data may show only the CPU-facing interface; if it does, record that ambiguity rather than assigning switch ports. Compare the reservation addresses with the board DTS before enabling provisional DMA regions. No raw /chosen data is needed. Compare the downloaded archive digest against the Actions checksum before unpacking. The load receipt binds this script's last successful load to the current boot and manifest; another program can still replace the kernel in between. Use a fresh trial directory for each build.
